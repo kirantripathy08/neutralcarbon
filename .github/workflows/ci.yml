@@ -1,0 +1,144 @@
+name: NeutralCarbon CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+
+  # ── Python: ML + Quantum ──────────────────────────────────────────────
+  python-tests:
+    name: Python Tests (ML + Quantum)
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11"]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          # Install core deps only (skip TF Quantum for CI speed)
+          pip install numpy pandas scikit-learn matplotlib seaborn pytest pytest-cov joblib
+
+      - name: Run ML tests
+        run: |
+          pytest tests/test_anomaly.py -v --tb=short \
+            --cov=ml --cov=data --cov-report=xml --cov-report=term-missing
+
+      - name: Run Quantum tests
+        run: |
+          pytest tests/test_quantum.py -v --tb=short \
+            --cov=quantum --cov-report=xml --cov-append
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./coverage.xml
+          flags: python
+          fail_ci_if_error: false
+
+  # ── Solidity: Smart Contracts ─────────────────────────────────────────
+  solidity-tests:
+    name: Solidity Tests (Hardhat)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: blockchain/package-lock.json
+
+      - name: Install Node dependencies
+        working-directory: blockchain
+        run: npm ci
+
+      - name: Compile contracts
+        working-directory: blockchain
+        run: npx hardhat compile
+
+      - name: Run contract tests
+        working-directory: blockchain
+        run: npx hardhat test ../tests/CarbonCredit.test.js --reporter spec
+
+      - name: Gas report
+        working-directory: blockchain
+        env:
+          REPORT_GAS: "true"
+        run: npx hardhat test ../tests/CarbonCredit.test.js
+        continue-on-error: true
+
+  # ── Code Quality ──────────────────────────────────────────────────────
+  lint:
+    name: Code Quality
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install linters
+        run: pip install flake8 black isort
+
+      - name: flake8 (errors only)
+        run: flake8 data/ ml/ quantum/ --max-line-length=100 --select=E9,F63,F7,F82
+
+      - name: black (format check)
+        run: black --check --line-length=100 data/ ml/ quantum/
+        continue-on-error: true
+
+      - name: isort (import order)
+        run: isort --check-only --profile=black data/ ml/ quantum/
+        continue-on-error: true
+
+  # ── Integration: Full Pipeline ────────────────────────────────────────
+  integration:
+    name: Integration Test
+    runs-on: ubuntu-latest
+    needs: [python-tests]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install numpy pandas scikit-learn joblib
+
+      - name: Run training pipeline (no autoencoder)
+        run: |
+          python ml/train.py
+
+      - name: Run quantum demo
+        run: |
+          python quantum/quantum_circuit.py
+
+      - name: Verify artifacts created
+        run: |
+          test -f ml/artifacts/isolation_forest.joblib || exit 1
+          test -f ml/artifacts/flagged_anomalies.csv   || exit 1
+          test -f ml/artifacts/metrics.json            || exit 1
+          echo "All artifacts present ✓"

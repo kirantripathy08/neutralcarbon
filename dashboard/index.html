@@ -1,0 +1,641 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NeutralCarbon — Carbon Credit Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+/* ── Reset & Base ── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --green: #1D9E75; --green-dark: #085041; --green-light: #E1F5EE;
+  --teal: #0F6E56;  --teal-light: #9FE1CB;
+  --blue: #185FA5;  --blue-light: #E6F1FB;
+  --purple: #534AB7; --purple-light: #EEEDFE;
+  --amber: #BA7517; --amber-light: #FAEEDA;
+  --red: #A32D2D;   --red-light: #FCEBEB;
+  --gray: #5F5E5A;  --gray-light: #F1EFE8;
+  --bg: #ffffff; --bg2: #f7f6f0; --bg3: #f0ede4;
+  --border: rgba(0,0,0,0.12);
+  --text: #1a1a18; --muted: #5f5e5a; --hint: #9a9893;
+  --radius: 10px; --radius-lg: 14px;
+  --shadow: 0 1px 3px rgba(0,0,0,0.07);
+}
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+       background: var(--bg3); color: var(--text); font-size: 14px; line-height: 1.5; }
+
+/* ── Layout ── */
+.app { display: flex; min-height: 100vh; }
+.sidebar { width: 220px; background: var(--green-dark); flex-shrink: 0;
+           display: flex; flex-direction: column; position: sticky; top: 0; height: 100vh; }
+.main { flex: 1; overflow: auto; }
+
+/* ── Sidebar ── */
+.sb-logo { padding: 20px 16px 16px; border-bottom: 1px solid rgba(255,255,255,0.1); }
+.sb-logo h1 { color: #fff; font-size: 16px; font-weight: 600;
+              display: flex; align-items: center; gap: 8px; }
+.sb-logo-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--teal-light); }
+.sb-logo p { color: rgba(255,255,255,0.5); font-size: 11px; margin-top: 3px; }
+.sb-nav { padding: 10px 8px; flex: 1; }
+.sb-section { font-size: 10px; font-weight: 600; letter-spacing: 0.8px;
+              color: rgba(255,255,255,0.35); padding: 10px 8px 4px;
+              text-transform: uppercase; }
+.sb-link { display: flex; align-items: center; gap: 9px; padding: 8px 10px;
+           border-radius: 7px; cursor: pointer; color: rgba(255,255,255,0.65);
+           font-size: 13px; transition: all .15s; border: none; background: none;
+           width: 100%; text-align: left; }
+.sb-link:hover { background: rgba(255,255,255,0.08); color: #fff; }
+.sb-link.active { background: rgba(255,255,255,0.15); color: #fff; font-weight: 500; }
+.sb-icon { font-size: 15px; width: 18px; text-align: center; }
+.sb-footer { padding: 12px 16px; border-top: 1px solid rgba(255,255,255,0.1);
+             color: rgba(255,255,255,0.4); font-size: 10px; }
+
+/* ── Top bar ── */
+.topbar { background: var(--bg); border-bottom: 1px solid var(--border);
+          padding: 12px 24px; display: flex; align-items: center; gap: 12px;
+          position: sticky; top: 0; z-index: 10; }
+.topbar h2 { font-size: 15px; font-weight: 600; }
+.topbar-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+.status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); }
+.status-text { font-size: 12px; color: var(--muted); }
+
+/* ── Page ── */
+.page { display: none; padding: 24px; }
+.page.active { display: block; }
+
+/* ── Metric cards ── */
+.metrics { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 12px; margin-bottom: 20px; }
+.metric { background: var(--bg); border-radius: var(--radius); padding: 14px 16px;
+          border: 1px solid var(--border); box-shadow: var(--shadow); }
+.metric-label { font-size: 11px; color: var(--muted); font-weight: 500;
+                text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 6px; }
+.metric-val { font-size: 24px; font-weight: 600; }
+.metric-sub { font-size: 11px; color: var(--hint); margin-top: 3px; }
+.mv-green  { color: var(--green); }
+.mv-blue   { color: var(--blue); }
+.mv-amber  { color: var(--amber); }
+.mv-red    { color: var(--red); }
+.mv-purple { color: var(--purple); }
+
+/* ── Cards ── */
+.card { background: var(--bg); border-radius: var(--radius-lg); padding: 18px;
+        border: 1px solid var(--border); box-shadow: var(--shadow); margin-bottom: 16px; }
+.card-title { font-size: 12px; font-weight: 600; color: var(--muted);
+              text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 14px; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+
+/* ── Chart ── */
+.chart-wrap { position: relative; }
+
+/* ── Table ── */
+.nc-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.nc-table th { text-align: left; padding: 9px 12px; font-size: 11px; font-weight: 600;
+               color: var(--muted); border-bottom: 1px solid var(--border);
+               text-transform: uppercase; letter-spacing: 0.4px; background: var(--bg2); }
+.nc-table td { padding: 9px 12px; border-bottom: 1px solid var(--border); }
+.nc-table tr:last-child td { border-bottom: none; }
+.nc-table tbody tr:hover td { background: var(--bg2); }
+
+/* ── Badge ── */
+.badge { display: inline-block; padding: 2px 9px; border-radius: 20px; font-size: 11px; font-weight: 600; }
+.b-red    { background: var(--red-light);    color: var(--red);       }
+.b-amber  { background: var(--amber-light);  color: var(--amber);     }
+.b-green  { background: var(--green-light);  color: var(--green-dark);}
+.b-blue   { background: var(--blue-light);   color: var(--blue);      }
+.b-purple { background: var(--purple-light); color: var(--purple);    }
+.b-gray   { background: var(--gray-light);   color: var(--gray);      }
+
+/* ── Alerts ── */
+.alert { border-left: 3px solid; border-radius: 0 8px 8px 0;
+         padding: 10px 14px; margin-bottom: 8px; font-size: 13px; }
+.alert-red   { border-color: var(--red);   background: var(--red-light);   color: #6b1515; }
+.alert-amber { border-color: var(--amber); background: var(--amber-light); color: #6b3a00; }
+.alert-green { border-color: var(--green); background: var(--green-light); color: var(--green-dark); }
+
+/* ── Controls ── */
+.ctrl { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 14px; }
+select { background: var(--bg2); border: 1px solid var(--border); border-radius: 7px;
+         padding: 6px 10px; font-size: 13px; color: var(--text); outline: none; cursor: pointer; }
+select:focus { border-color: var(--green); }
+.btn { background: none; border: 1px solid var(--border); border-radius: 7px;
+       padding: 6px 14px; font-size: 13px; cursor: pointer; color: var(--text); transition: all .15s; }
+.btn:hover { background: var(--bg2); }
+.btn-primary { background: var(--green); border-color: var(--green); color: #fff; }
+.btn-primary:hover { background: var(--teal); border-color: var(--teal); }
+input[type=number], input[type=text] {
+  background: var(--bg2); border: 1px solid var(--border); border-radius: 7px;
+  padding: 6px 10px; font-size: 13px; color: var(--text); outline: none; width: 100%; }
+input:focus { border-color: var(--green); }
+
+/* ── Blockchain ── */
+.chain { display: flex; gap: 0; overflow-x: auto; padding: 4px 0 12px; }
+.block { flex: 0 0 155px; background: var(--bg); border: 1px solid var(--border);
+         border-radius: var(--radius); padding: 12px; position: relative; margin-right: 28px; }
+.block::after { content: '→'; position: absolute; right: -20px; top: 50%;
+                transform: translateY(-50%); color: var(--muted); font-size: 18px; }
+.block:last-child::after { display: none; }
+.b-num   { font-size: 10px; font-weight: 700; color: var(--green); margin-bottom: 4px; }
+.b-label { font-size: 12px; font-weight: 600; margin-bottom: 3px; }
+.b-data  { font-size: 11px; color: var(--muted); margin-bottom: 4px; }
+.b-hash  { font-family: monospace; font-size: 9px; color: var(--hint); word-break: break-all; }
+
+/* ── Token cards ── */
+.token-grid { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 10px; }
+.token { border: 1px solid var(--border); border-radius: var(--radius); padding: 12px;
+         background: var(--bg2); }
+.t-id  { font-family: monospace; font-size: 10px; color: var(--hint); margin-bottom: 4px; }
+.t-val { font-size: 19px; font-weight: 700; color: var(--green); margin-bottom: 3px; }
+.t-meta { font-size: 11px; color: var(--muted); }
+
+/* ── QML bars ── */
+.q-row  { display: flex; align-items: center; gap: 10px; margin-bottom: 9px; }
+.q-lbl  { font-size: 12px; color: var(--muted); width: 130px; flex-shrink: 0; }
+.q-wrap { flex: 1; background: var(--bg2); border-radius: 4px; height: 16px; overflow: hidden; }
+.q-bar  { height: 100%; border-radius: 4px; display: flex; align-items: center;
+          justify-content: flex-end; padding-right: 6px; font-size: 10px;
+          font-weight: 600; color: #fff; transition: width .6s ease; }
+
+/* ── Circuit ── */
+.circ-row { display: flex; align-items: center; margin-bottom: 9px; }
+.circ-lbl { font-family: monospace; font-size: 11px; color: var(--muted);
+            width: 70px; flex-shrink: 0; }
+.wire { flex: 1; height: 1px; background: var(--border); }
+.gate { background: var(--purple-light); border: 1px solid var(--purple);
+        border-radius: 4px; padding: 2px 7px; font-size: 10px; font-weight: 600;
+        color: var(--purple); margin: 0 3px; white-space: nowrap; }
+.gate.meas { background: var(--amber-light); border-color: var(--amber); color: var(--amber); }
+
+/* ── Progress ── */
+.prog-wrap { background: var(--bg2); border-radius: 4px; height: 6px; overflow: hidden; margin-top: 6px; }
+.prog-bar  { height: 100%; border-radius: 4px; }
+
+/* ── Form group ── */
+.form-group { margin-bottom: 12px; }
+.form-label { font-size: 11px; font-weight: 600; color: var(--muted);
+              margin-bottom: 4px; display: block; text-transform: uppercase; letter-spacing: 0.4px; }
+
+/* ── Misc ── */
+.success-msg { font-size: 12px; color: var(--green); font-weight: 500; margin-top: 8px;
+               padding: 8px 12px; background: var(--green-light); border-radius: 6px;
+               display: none; }
+</style>
+</head>
+<body>
+
+<div class="app">
+
+<!-- ── Sidebar ── -->
+<aside class="sidebar">
+  <div class="sb-logo">
+    <h1><span class="sb-logo-dot"></span>NeutralCarbon</h1>
+    <p>Carbon Credit Platform</p>
+  </div>
+  <nav class="sb-nav">
+    <div class="sb-section">Analytics</div>
+    <button class="sb-link active" onclick="nav(this,'dashboard')"><span class="sb-icon">◈</span> Dashboard</button>
+    <button class="sb-link" onclick="nav(this,'anomaly')"><span class="sb-icon">⚠</span> Anomaly Detection</button>
+    <button class="sb-link" onclick="nav(this,'quantum')"><span class="sb-icon">◎</span> Quantum Analytics</button>
+    <div class="sb-section">Blockchain</div>
+    <button class="sb-link" onclick="nav(this,'blockchain')"><span class="sb-icon">⛓</span> Ledger & Tokens</button>
+    <div class="sb-section">System</div>
+    <button class="sb-link" onclick="nav(this,'architecture')"><span class="sb-icon">⌗</span> Architecture</button>
+  </nav>
+  <div class="sb-footer">BCSE498J · VIT 2026<br>Kiran · Advaith</div>
+</aside>
+
+<!-- ── Main ── -->
+<div class="main">
+
+<!-- TOP BAR (updates per page) -->
+<div class="topbar">
+  <h2 id="topbar-title">Dashboard</h2>
+  <div class="topbar-right">
+    <div class="status-dot"></div>
+    <span class="status-text">Live — 92 countries · 1992–2018</span>
+  </div>
+</div>
+
+<!-- ════ DASHBOARD ════ -->
+<div id="page-dashboard" class="page active">
+  <div class="metrics">
+    <div class="metric"><div class="metric-label">Countries Tracked</div><div class="metric-val mv-blue">92</div><div class="metric-sub">Global dataset</div></div>
+    <div class="metric"><div class="metric-label">Anomalies Detected</div><div class="metric-val mv-red">24</div><div class="metric-sub">Across all models</div></div>
+    <div class="metric"><div class="metric-label">Credits Tokenized</div><div class="metric-val mv-green">12,450t</div><div class="metric-sub">ERC-1155 on-chain</div></div>
+    <div class="metric"><div class="metric-label">QML Accuracy</div><div class="metric-val mv-amber">94.2%</div><div class="metric-sub">+5.5pp vs classical</div></div>
+  </div>
+  <div class="grid2">
+    <div class="card"><div class="card-title">CO₂ Sources — Global 2018</div><div class="chart-wrap" style="height:230px"><canvas id="c-donut"></canvas></div></div>
+    <div class="card"><div class="card-title">Top 10 Emitters (Mt CO₂)</div><div class="chart-wrap" style="height:230px"><canvas id="c-top10"></canvas></div></div>
+  </div>
+  <div class="card">
+    <div class="card-title">Global Trend by Source · 1992–2018</div>
+    <div class="chart-wrap" style="height:210px"><canvas id="c-trend"></canvas></div>
+  </div>
+  <div class="card">
+    <div class="card-title">Live Alerts</div>
+    <div class="alert alert-red"><strong>China 2018:</strong> Coal CO₂ spike 340% above 10-yr baseline — HIGH risk, oracle dispatched</div>
+    <div class="alert alert-amber"><strong>USA 2015:</strong> Gas emissions anomaly — MEDIUM confidence, verification pending</div>
+    <div class="alert alert-amber"><strong>India 2017:</strong> Cement CO₂ deviation 2.9σ — MEDIUM risk</div>
+    <div class="alert alert-green"><strong>Brazil 2018:</strong> All sources within bounds — VERIFIED · token minted</div>
+  </div>
+</div>
+
+<!-- ════ ANOMALY ════ -->
+<div id="page-anomaly" class="page">
+  <div class="metrics">
+    <div class="metric"><div class="metric-label">Model</div><div class="metric-val mv-green" id="m-model">Isolation Forest</div><div class="metric-sub">Primary detector</div></div>
+    <div class="metric"><div class="metric-label">Flagged</div><div class="metric-val mv-red" id="m-flagged">8</div><div class="metric-sub">This run</div></div>
+    <div class="metric"><div class="metric-label">Accuracy</div><div class="metric-val mv-amber" id="m-acc">88.4%</div><div class="metric-sub">vs ground truth</div></div>
+    <div class="metric"><div class="metric-label">F1 Score</div><div class="metric-val mv-blue" id="m-f1">0.88</div><div class="metric-sub">Precision × Recall</div></div>
+  </div>
+  <div class="card">
+    <div class="card-title">Detection Engine</div>
+    <div class="ctrl">
+      <select id="sel-model" onchange="changeModel()">
+        <option value="if">Isolation Forest</option>
+        <option value="svm">One-Class SVM</option>
+        <option value="iqr">IQR Statistical</option>
+        <option value="ae">Autoencoder (DL)</option>
+        <option value="qml">QML (Quantum)</option>
+      </select>
+      <select id="sel-year"><option>2018</option><option>2017</option><option>2016</option><option>2015</option><option>2014</option></select>
+      <select id="sel-src"><option value="total">CO₂ Total</option><option value="coal">CO₂ Coal</option><option value="oil">CO₂ Oil</option><option value="gas">CO₂ Gas</option></select>
+      <button class="btn btn-primary" onclick="runAnomaly()">Run Detection</button>
+    </div>
+    <div class="chart-wrap" style="height:260px"><canvas id="c-scatter"></canvas></div>
+  </div>
+  <div class="grid2">
+    <div class="card">
+      <div class="card-title">Flagged Records</div>
+      <table class="nc-table">
+        <thead><tr><th>Country</th><th>Year</th><th>Score</th><th>Risk</th><th></th></tr></thead>
+        <tbody id="flag-tbody"></tbody>
+      </table>
+    </div>
+    <div class="card">
+      <div class="card-title">Model Performance</div>
+      <div class="chart-wrap" style="height:230px"><canvas id="c-perf"></canvas></div>
+    </div>
+  </div>
+</div>
+
+<!-- ════ QUANTUM ════ -->
+<div id="page-quantum" class="page">
+  <div class="metrics">
+    <div class="metric"><div class="metric-label">Qubits</div><div class="metric-val mv-purple">4</div><div class="metric-sub">Simulated (Cirq/TFQ)</div></div>
+    <div class="metric"><div class="metric-label">Circuit Depth</div><div class="metric-val mv-blue">9 gates</div><div class="metric-sub">3 layers</div></div>
+    <div class="metric"><div class="metric-label">QML Accuracy</div><div class="metric-val mv-amber">94.2%</div><div class="metric-sub">F1 = 0.943</div></div>
+    <div class="metric"><div class="metric-label">Advantage</div><div class="metric-val mv-green">+5.5pp</div><div class="metric-sub">vs Isolation Forest</div></div>
+  </div>
+  <div class="grid2">
+    <div class="card">
+      <div class="card-title">Quantum Circuit — Angle Encoding</div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:12px">H → RY(θ) → CNOT → RZ(φ) → RY(ψ) → Measure</div>
+      <div id="qcirc"></div>
+      <button class="btn" style="width:100%;margin-top:12px" onclick="animateCircuit()">▶ Simulate Circuit</button>
+    </div>
+    <div class="card">
+      <div class="card-title">Feature Importance (PCA-weighted)</div>
+      <div id="qfeat"></div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-title">QML vs Classical — Accuracy vs Dataset Noise</div>
+    <div class="ctrl">
+      <label style="font-size:13px;color:var(--muted)">Noise:</label>
+      <input type="range" min="0" max="100" value="20" id="noise" style="width:180px" oninput="updateNoise(this.value)">
+      <span id="noise-lbl" style="font-size:13px;font-weight:600;min-width:36px">20%</span>
+    </div>
+    <div class="chart-wrap" style="height:230px"><canvas id="c-qml"></canvas></div>
+    <div style="font-size:11px;color:var(--muted);margin-top:8px">QML maintains advantage under high noise — consistent with Havlíček et al. (2019)</div>
+  </div>
+</div>
+
+<!-- ════ BLOCKCHAIN ════ -->
+<div id="page-blockchain" class="page">
+  <div class="metrics">
+    <div class="metric"><div class="metric-label">Blocks</div><div class="metric-val mv-blue" id="bm-blocks">5</div><div class="metric-sub">ERC-1155 ledger</div></div>
+    <div class="metric"><div class="metric-label">Credits Issued</div><div class="metric-val mv-green" id="bm-credits">4,350t</div><div class="metric-sub">CO₂ offset</div></div>
+    <div class="metric"><div class="metric-label">Fraud Blocked</div><div class="metric-val mv-red">3</div><div class="metric-sub">Tamper attempts</div></div>
+    <div class="metric"><div class="metric-label">Oracle Feeds</div><div class="metric-val mv-amber">5</div><div class="metric-sub">Chainlink nodes</div></div>
+  </div>
+  <div class="card"><div class="card-title">Blockchain Ledger</div><div class="chain" id="chain"></div></div>
+  <div class="grid2">
+    <div class="card">
+      <div class="card-title">Mint Carbon Credit Token</div>
+      <div class="form-group"><label class="form-label">Country</label><select id="mint-c" style="width:100%"></select></div>
+      <div class="form-group"><label class="form-label">Offset (tonnes CO₂)</label><input type="number" id="mint-t" value="100" min="1" max="50000"></div>
+      <div class="form-group"><label class="form-label">Emission Source</label>
+        <select id="mint-s" style="width:100%"><option>mixed</option><option>coal</option><option>oil</option><option>gas</option><option>cement</option></select>
+      </div>
+      <div class="form-group"><label class="form-label">Verification</label>
+        <select id="mint-v" style="width:100%"><option>QML Verified</option><option>Oracle Confirmed</option><option>Pending Review</option></select>
+      </div>
+      <button class="btn btn-primary" onclick="mintToken()" style="width:100%">Mint ERC-1155 Token →</button>
+      <div class="success-msg" id="mint-msg"></div>
+    </div>
+    <div class="card"><div class="card-title">Active Tokens</div><div class="token-grid" id="tok-grid"></div></div>
+  </div>
+  <div class="card">
+    <div class="card-title">Token Issuance vs Retirement</div>
+    <div class="chart-wrap" style="height:210px"><canvas id="c-tokens"></canvas></div>
+  </div>
+</div>
+
+<!-- ════ ARCHITECTURE ════ -->
+<div id="page-architecture" class="page">
+  <div class="card">
+    <div class="card-title">System Architecture — NeutralCarbon</div>
+    <svg width="100%" viewBox="0 0 720 440" style="font-family:inherit">
+      <defs>
+        <marker id="arr" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+          <path d="M2 1L8 5L2 9" fill="none" stroke="#9a9893" stroke-width="2" stroke-linecap="round"/>
+        </marker>
+      </defs>
+      <!-- Data Sources -->
+      <rect x="20" y="30" width="140" height="44" rx="8" fill="#E6F1FB" stroke="#B5D4F4" stroke-width="1"/>
+      <text x="90" y="50" text-anchor="middle" font-size="11" font-weight="600" fill="#0C447C">Data Sources</text>
+      <text x="90" y="64" text-anchor="middle" font-size="9" fill="#185FA5">Satellite + GHG datasets</text>
+      <!-- Preprocessing -->
+      <rect x="20" y="120" width="140" height="44" rx="8" fill="#F1EFE8" stroke="#D3D1C7" stroke-width="1"/>
+      <text x="90" y="140" text-anchor="middle" font-size="11" font-weight="600" fill="#2C2C2A">Preprocessing</text>
+      <text x="90" y="154" text-anchor="middle" font-size="9" fill="#444441">Clean · Scale · PCA</text>
+      <line x1="90" y1="74" x2="90" y2="118" stroke="#9a9893" stroke-width="1" marker-end="url(#arr)"/>
+      <!-- ML -->
+      <rect x="210" y="70" width="150" height="44" rx="8" fill="#E1F5EE" stroke="#9FE1CB" stroke-width="1"/>
+      <text x="285" y="90" text-anchor="middle" font-size="11" font-weight="600" fill="#04342C">ML Anomaly Detection</text>
+      <text x="285" y="104" text-anchor="middle" font-size="9" fill="#085041">Isolation Forest · SVM</text>
+      <!-- QML -->
+      <rect x="210" y="165" width="150" height="44" rx="8" fill="#EEEDFE" stroke="#AFA9EC" stroke-width="1"/>
+      <text x="285" y="185" text-anchor="middle" font-size="11" font-weight="600" fill="#26215C">Quantum Analytics</text>
+      <text x="285" y="199" text-anchor="middle" font-size="9" fill="#3C3489">TF Quantum · 4 qubits</text>
+      <!-- Satellite -->
+      <rect x="210" y="260" width="150" height="44" rx="8" fill="#E6F1FB" stroke="#B5D4F4" stroke-width="1"/>
+      <text x="285" y="280" text-anchor="middle" font-size="11" font-weight="600" fill="#0C447C">Satellite Imagery</text>
+      <text x="285" y="294" text-anchor="middle" font-size="9" fill="#185FA5">Copernicus Sentinel</text>
+      <!-- Arrows from preprocess -->
+      <path d="M160 142 L190 142 L190 92 L208 92" fill="none" stroke="#9a9893" stroke-width="1" marker-end="url(#arr)"/>
+      <path d="M160 142 L190 142 L190 187 L208 187" fill="none" stroke="#9a9893" stroke-width="1" marker-end="url(#arr)"/>
+      <path d="M160 142 L190 142 L190 282 L208 282" fill="none" stroke="#9a9893" stroke-width="1" marker-end="url(#arr)"/>
+      <!-- Oracle -->
+      <rect x="420" y="165" width="140" height="44" rx="8" fill="#FAEEDA" stroke="#FAC775" stroke-width="1"/>
+      <text x="490" y="185" text-anchor="middle" font-size="11" font-weight="600" fill="#412402">Chainlink Oracle</text>
+      <text x="490" y="199" text-anchor="middle" font-size="9" fill="#633806">Off→on chain bridge</text>
+      <!-- Arrows to oracle -->
+      <line x1="360" y1="92"  x2="418" y2="180" stroke="#9a9893" stroke-width="1" marker-end="url(#arr)"/>
+      <line x1="360" y1="187" x2="418" y2="187" stroke="#9a9893" stroke-width="1" marker-end="url(#arr)"/>
+      <line x1="360" y1="282" x2="418" y2="198" stroke="#9a9893" stroke-width="1" marker-end="url(#arr)"/>
+      <!-- Smart Contract -->
+      <rect x="420" y="70" width="140" height="44" rx="8" fill="#E1F5EE" stroke="#9FE1CB" stroke-width="1"/>
+      <text x="490" y="90" text-anchor="middle" font-size="11" font-weight="600" fill="#04342C">Smart Contract</text>
+      <text x="490" y="104" text-anchor="middle" font-size="9" fill="#085041">ERC-1155 lifecycle</text>
+      <line x1="490" y1="163" x2="490" y2="116" stroke="#9a9893" stroke-width="1" marker-end="url(#arr)"/>
+      <!-- Blockchain -->
+      <rect x="600" y="70" width="100" height="44" rx="8" fill="#E1F5EE" stroke="#9FE1CB" stroke-width="1"/>
+      <text x="650" y="90" text-anchor="middle" font-size="11" font-weight="600" fill="#04342C">Blockchain</text>
+      <text x="650" y="104" text-anchor="middle" font-size="9" fill="#085041">Immutable ledger</text>
+      <line x1="562" y1="92" x2="598" y2="92" stroke="#9a9893" stroke-width="1" marker-end="url(#arr)"/>
+      <!-- Token Registry -->
+      <rect x="600" y="165" width="100" height="44" rx="8" fill="#FAECE7" stroke="#F5C4B3" stroke-width="1"/>
+      <text x="650" y="185" text-anchor="middle" font-size="11" font-weight="600" fill="#4A1B0C">Token Registry</text>
+      <text x="650" y="199" text-anchor="middle" font-size="9" fill="#712B13">Credit ownership</text>
+      <line x1="562" y1="187" x2="598" y2="187" stroke="#9a9893" stroke-width="1" marker-end="url(#arr)"/>
+      <line x1="650" y1="116" x2="650" y2="163" stroke="#9a9893" stroke-width="1" marker-end="url(#arr)"/>
+      <!-- Dashboard -->
+      <rect x="300" y="360" width="320" height="44" rx="8" fill="#F1EFE8" stroke="#D3D1C7" stroke-width="1"/>
+      <text x="460" y="380" text-anchor="middle" font-size="11" font-weight="600" fill="#2C2C2A">NeutralCarbon Dashboard</text>
+      <text x="460" y="394" text-anchor="middle" font-size="9" fill="#444441">Monitoring · Reporting · Compliance</text>
+      <line x1="650" y1="211" x2="650" y2="350" fill="none" stroke="#9a9893" stroke-width="1"/>
+      <line x1="490" y1="211" x2="490" y2="350" fill="none" stroke="#9a9893" stroke-width="1"/>
+      <path d="M490 350 L650 350 L650 358" fill="none" stroke="#9a9893" stroke-width="1" marker-end="url(#arr)"/>
+    </svg>
+  </div>
+  <div class="grid3">
+    <div class="card">
+      <div class="card-title">Phase 1 — Data</div>
+      <div style="font-size:12px;color:var(--muted);line-height:1.6">92 countries · 1992–2018 · Our World in Data · Copernicus Sentinel</div>
+      <div class="prog-wrap"><div class="prog-bar" style="width:100%;background:var(--green)"></div></div>
+      <div style="font-size:11px;color:var(--green);margin-top:5px;font-weight:600">✓ Complete</div>
+    </div>
+    <div class="card">
+      <div class="card-title">Phase 2 — ML</div>
+      <div style="font-size:12px;color:var(--muted);line-height:1.6">Isolation Forest · One-Class SVM · IQR · Autoencoder ensemble</div>
+      <div class="prog-wrap"><div class="prog-bar" style="width:90%;background:var(--green)"></div></div>
+      <div style="font-size:11px;color:var(--amber);margin-top:5px;font-weight:600">90% — Testing</div>
+    </div>
+    <div class="card">
+      <div class="card-title">Phase 3 — Quantum</div>
+      <div style="font-size:12px;color:var(--muted);line-height:1.6">4-qubit circuit · Angle + ZZ encoding · Simulated TF Quantum</div>
+      <div class="prog-wrap"><div class="prog-bar" style="width:75%;background:var(--amber)"></div></div>
+      <div style="font-size:11px;color:var(--amber);margin-top:5px;font-weight:600">75% — Simulation</div>
+    </div>
+  </div>
+</div>
+
+</div><!-- .main -->
+</div><!-- .app -->
+
+<script>
+// ── PAGE NAV ────────────────────────────────────────────────────────────
+const TITLES = {dashboard:'Dashboard',anomaly:'Anomaly Detection',quantum:'Quantum Analytics',blockchain:'Blockchain Ledger',architecture:'Architecture'};
+function nav(btn, id) {
+  document.querySelectorAll('.sb-link').forEach(b=>b.classList.remove('active'));
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('page-'+id).classList.add('active');
+  document.getElementById('topbar-title').textContent = TITLES[id];
+  setTimeout(()=>initPage(id), 30);
+}
+
+const C = {};  // chart registry
+function mkChart(id, cfg) { if(C[id]) C[id].destroy(); C[id] = new Chart(document.getElementById(id), cfg); }
+const F = {family:'system-ui',size:11};
+const gridOpts = { x:{ticks:{font:F},grid:{display:false}}, y:{ticks:{font:F},grid:{color:'rgba(0,0,0,0.04)'}} };
+
+// ── DATA ────────────────────────────────────────────────────────────────
+const TOP10 = [
+  {c:'China',t:9297},{c:'USA',t:5491},{c:'India',t:2446},{c:'Russia',t:1327},
+  {c:'Japan',t:1011},{c:'Korea',t:526},{c:'Canada',t:470},{c:'S.Arabia',t:462},
+  {c:'Iran',t:452},{c:'Germany',t:510}
+];
+const TREND = {
+  labels:[1992,1994,1996,1998,2000,2002,2004,2006,2008,2010,2012,2014,2016,2018],
+  coal:  [4200,4400,4700,4600,4900,5700,6600,7600,7200,8100,8800,8900,8500,8800],
+  oil:   [2900,3000,3100,3050,3200,3100,3200,3300,3100,3200,3300,3400,3350,3400],
+  gas:   [1600,1700,1750,1900,2100,2200,2400,2500,2600,2800,2900,3000,3100,3200],
+  cement:[420,450,490,500,570,700,900,1100,1150,1400,1600,1700,1700,1750]
+};
+const ANOMALIES = [
+  {c:'China',y:2018,s:3.82,r:'HIGH'},    {c:'Saudi Arabia',y:2013,s:3.12,r:'HIGH'},
+  {c:'India',y:2017,s:2.91,r:'MEDIUM'},  {c:'Iran',y:2014,s:2.73,r:'MEDIUM'},
+  {c:'USA',y:2015,s:2.44,r:'MEDIUM'},    {c:'Russia',y:2016,s:1.98,r:'LOW'},
+  {c:'S. Korea',y:2018,s:1.72,r:'LOW'},  {c:'Australia',y:2017,s:1.55,r:'LOW'},
+];
+const MODEL_METRICS = {
+  if: {name:'Isolation Forest',acc:'88.4%',f1:'0.88'},
+  svm:{name:'One-Class SVM',acc:'85.1%',f1:'0.85'},
+  iqr:{name:'IQR Statistical',acc:'82.3%',f1:'0.81'},
+  ae: {name:'Autoencoder',acc:'90.3%',f1:'0.90'},
+  qml:{name:'QML (Quantum)',acc:'94.2%',f1:'0.94'},
+};
+const COUNTRIES = ['China','United States','India','Russia','Japan','Germany','South Korea','Iran','Saudi Arabia','Canada','Brazil','Australia','France','UK','Mexico'];
+let tokens = [
+  {id:'CC-0x1A2F',c:'Brazil',t:2400,s:'QML Verified'},
+  {id:'CC-0x3B8E',c:'Germany',t:1100,s:'Oracle Confirmed'},
+  {id:'CC-0xC91D',c:'Canada',t:850,s:'QML Verified'},
+];
+let blocks = [
+  {n:1,l:'Genesis',d:'Registry init',h:'0x00...0000'},
+  {n:2,l:'CC-0x1A2F',d:'Brazil 2400t',h:'0xa3f...91e2'},
+  {n:3,l:'CC-0x3B8E',d:'Germany 1100t',h:'0xb7c...4f81'},
+  {n:4,l:'CC-0xC91D',d:'Canada 850t',h:'0xd2a...77cc'},
+  {n:5,l:'Audit #1',d:'QML batch check',h:'0xe1b...39ad'},
+];
+
+// ── INIT PAGES ─────────────────────────────────────────────────────────
+function initPage(id) {
+  if(id==='dashboard')    initDashboard();
+  if(id==='anomaly')      initAnomaly();
+  if(id==='quantum')      initQuantum();
+  if(id==='blockchain')   initBlockchain();
+}
+
+function initDashboard() {
+  mkChart('c-donut',{type:'doughnut',data:{labels:['Coal','Oil','Gas','Cement','Other'],datasets:[{data:[8800,7200,5800,2100,800],backgroundColor:['#3C3489','#185FA5','#1D9E75','#BA7517','#888780'],borderWidth:0}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:true,position:'right',labels:{font:F,boxWidth:10,padding:8}}}}});
+  const s=[...TOP10].sort((a,b)=>b.t-a.t);
+  mkChart('c-top10',{type:'bar',data:{labels:s.map(d=>d.c),datasets:[{data:s.map(d=>d.t),backgroundColor:'#1D9E75',borderRadius:4}]},options:{...{responsive:true,maintainAspectRatio:false},indexAxis:'y',plugins:{legend:{display:false}},scales:{x:{...gridOpts.x,ticks:{...gridOpts.x.ticks,callback:v=>v+'Mt'}},y:{...gridOpts.y,grid:{display:false}}}}});
+  mkChart('c-trend',{type:'line',data:{labels:TREND.labels,datasets:[
+    {label:'Coal',data:TREND.coal,borderColor:'#534AB7',backgroundColor:'rgba(83,74,183,0.07)',fill:true,tension:.3,pointRadius:0,borderWidth:2},
+    {label:'Oil', data:TREND.oil, borderColor:'#185FA5',backgroundColor:'rgba(24,95,165,0.07)',fill:true,tension:.3,pointRadius:0,borderWidth:2},
+    {label:'Gas', data:TREND.gas, borderColor:'#1D9E75',backgroundColor:'rgba(29,158,117,0.07)',fill:true,tension:.3,pointRadius:0,borderWidth:2},
+    {label:'Cement',data:TREND.cement,borderColor:'#BA7517',backgroundColor:'rgba(186,117,23,0.07)',fill:true,tension:.3,pointRadius:0,borderWidth:2},
+  ]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:true,labels:{font:F,boxWidth:10,padding:8}}},scales:{x:{ticks:{font:F},grid:{display:false}},y:{ticks:{font:F,callback:v=>v+'Mt'},grid:{color:'rgba(0,0,0,0.04)'}}}}});
+}
+
+function initAnomaly() {
+  runAnomaly();
+  mkChart('c-perf',{type:'bar',data:{labels:['IF','SVM','IQR','AE','QML'],datasets:[{data:[88.4,85.1,82.3,90.3,94.2],backgroundColor:['#1D9E75','#185FA5','#888780','#534AB7','#BA7517'],borderRadius:5}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{ticks:{font:F},grid:{display:false}},y:{min:78,max:100,ticks:{font:F,callback:v=>v+'%'},grid:{color:'rgba(0,0,0,0.04)'}}}}});
+}
+
+function changeModel() {
+  const m = document.getElementById('sel-model').value;
+  const info = MODEL_METRICS[m];
+  document.getElementById('m-model').textContent = info.name;
+  document.getElementById('m-acc').textContent = info.acc;
+  document.getElementById('m-f1').textContent = info.f1;
+}
+
+function runAnomaly() {
+  changeModel();
+  // Scatter
+  const normal = Array.from({length:70},()=>({x:Math.random()*600+50,y:Math.random()*250+30}));
+  const anom   = [{x:950,y:420},{x:880,y:50},{x:820,y:400},{x:30,y:440}];
+  mkChart('c-scatter',{type:'scatter',data:{datasets:[
+    {label:'Normal',data:normal,backgroundColor:'rgba(29,158,117,0.35)',pointRadius:5,borderWidth:0},
+    {label:'Anomaly',data:anom,backgroundColor:'rgba(163,45,45,0.75)',pointRadius:9,pointStyle:'triangle'},
+  ]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:true,labels:{font:F,boxWidth:10}}},scales:{x:{title:{display:true,text:'CO₂ Total (Mt)',font:F},ticks:{font:F},grid:{display:false}},y:{title:{display:true,text:'CH₄ Emissions',font:F},ticks:{font:F},grid:{color:'rgba(0,0,0,0.04)'}}}}});
+  // Table
+  const RISK = {HIGH:'b-red',MEDIUM:'b-amber',LOW:'b-green'};
+  document.getElementById('flag-tbody').innerHTML = ANOMALIES.map(a=>`
+    <tr>
+      <td>${a.c}</td><td>${a.y}</td>
+      <td style="font-family:monospace">${a.s.toFixed(2)}</td>
+      <td><span class="badge ${RISK[a.r]}">${a.r}</span></td>
+      <td><button class="btn" style="padding:2px 8px;font-size:11px">Flag</button></td>
+    </tr>`).join('');
+  document.getElementById('m-flagged').textContent = ANOMALIES.length;
+}
+
+function initQuantum() {
+  // Circuit
+  const q = ['q₀','q₁','q₂','q₃'];
+  const gates = [['H','RY(θ)','CNOT','RZ(φ)','RY(ψ)','M'],['H','RY(θ)','CNOT','RZ(φ)','RY(ψ)','M'],['H','RX(θ)','CNOT','RZ(φ)','RY(ψ)','M'],['H','RX(θ)','—','RZ(φ)','RY(ψ)','M']];
+  document.getElementById('qcirc').innerHTML = q.map((qi,i)=>`
+    <div class="circ-row">
+      <span class="circ-lbl">${qi}</span>
+      ${gates[i].map(g=>`<div class="wire"></div><span class="gate${g==='M'?' meas':''}">${g}</span>`).join('')}
+      <div class="wire" style="flex:0.3"></div>
+    </div>`).join('');
+  // Feature bars
+  const feats=[{n:'CO₂ Total',p:92,col:'#534AB7'},{n:'CO₂ Coal',p:78,col:'#7F77DD'},{n:'CO₂ Oil',p:65,col:'#0F6E56'},{n:'CH₄',p:71,col:'#1D9E75'},{n:'N₂O',p:58,col:'#BA7517'},{n:'GDP ratio',p:44,col:'#888780'},{n:'CO₂ Gas',p:61,col:'#185FA5'},{n:'Cement',p:53,col:'#3C3489'}];
+  document.getElementById('qfeat').innerHTML = feats.map(f=>`
+    <div class="q-row">
+      <div class="q-lbl">${f.n}</div>
+      <div class="q-wrap"><div class="q-bar" style="width:${f.p}%;background:${f.col}">${f.p}%</div></div>
+    </div>`).join('');
+  updateNoise(20);
+}
+
+function animateCircuit() {
+  const gates = document.querySelectorAll('.gate');
+  gates.forEach((g,i)=>{ g.style.opacity='0.15'; setTimeout(()=>{ g.style.opacity='1'; g.style.transition='opacity .25s'; }, i*100); });
+}
+
+function updateNoise(v) {
+  document.getElementById('noise-lbl').textContent = Math.round(v)+'%';
+  const labels = [0,10,20,30,40,50,60,70,80,90,100];
+  const n = v/100;
+  const qml  = labels.map(l=>{ const nl=l/100; return Math.max(50, 94.2 - nl*14 + n*3*(Math.random()-.5)); });
+  const clas = labels.map(l=>{ const nl=l/100; return Math.max(50, 88.7 - nl*24 + n*6*(Math.random()-.5)); });
+  mkChart('c-qml',{type:'line',data:{labels:labels.map(l=>l+'%'),datasets:[
+    {label:'QML (Quantum)',data:qml,borderColor:'#534AB7',backgroundColor:'rgba(83,74,183,0.08)',fill:true,tension:.4,pointRadius:3,borderWidth:2},
+    {label:'Classical ML', data:clas,borderColor:'#888780',backgroundColor:'rgba(136,135,128,0.05)',fill:true,tension:.4,pointRadius:3,borderWidth:2,borderDash:[4,3]},
+  ]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:true,labels:{font:F,boxWidth:10}}},scales:{x:{title:{display:true,text:'Noise level',font:F},ticks:{font:F},grid:{display:false}},y:{min:50,max:100,title:{display:true,text:'Accuracy (%)',font:F},ticks:{font:F,callback:v=>v+'%'},grid:{color:'rgba(0,0,0,0.04)'}}}}});
+}
+
+function initBlockchain() {
+  renderChain(); renderTokens();
+  const sel = document.getElementById('mint-c');
+  if(!sel.options.length) COUNTRIES.forEach(c=>{ const o=document.createElement('option'); o.textContent=c; sel.appendChild(o); });
+  mkChart('c-tokens',{type:'line',data:{labels:['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug'],datasets:[
+    {label:'Issued',data:[800,1400,2100,3200,4800,7200,9800,12450],borderColor:'#1D9E75',backgroundColor:'rgba(29,158,117,0.1)',fill:true,tension:.4,pointRadius:3},
+    {label:'Retired',data:[0,200,500,900,1400,2200,3100,4200],borderColor:'#BA7517',backgroundColor:'rgba(186,117,23,0.07)',fill:true,tension:.4,pointRadius:3},
+  ]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:true,labels:{font:F,boxWidth:10}}},scales:{x:{ticks:{font:F},grid:{display:false}},y:{ticks:{font:F,callback:v=>v.toLocaleString()},grid:{color:'rgba(0,0,0,0.04)'}}}}});
+}
+
+function renderChain() {
+  document.getElementById('chain').innerHTML = blocks.map(b=>`
+    <div class="block">
+      <div class="b-num">BLOCK #${b.n}</div>
+      <div class="b-label">${b.l}</div>
+      <div class="b-data">${b.d}</div>
+      <div class="b-hash">${b.h}</div>
+    </div>`).join('');
+  document.getElementById('bm-blocks').textContent = blocks.length;
+}
+
+function renderTokens() {
+  const SC = {'QML':'b-green','Oracle':'b-blue','Pending':'b-amber'};
+  document.getElementById('tok-grid').innerHTML = tokens.map(t=>{
+    const k = Object.keys(SC).find(k=>t.s.includes(k))||'Pending';
+    return `<div class="token">
+      <div class="t-id">${t.id}</div>
+      <div class="t-val">${t.t.toLocaleString()}t</div>
+      <div class="t-meta">${t.c}</div>
+      <div style="margin-top:5px"><span class="badge ${SC[k]}">${t.s}</span></div>
+    </div>`;
+  }).join('');
+  document.getElementById('bm-credits').textContent = tokens.reduce((s,t)=>s+t.t,0).toLocaleString()+'t';
+}
+
+function mintToken() {
+  const c = document.getElementById('mint-c').value;
+  const t = parseInt(document.getElementById('mint-t').value)||100;
+  const s = document.getElementById('mint-v').value;
+  const id = 'CC-0x'+Math.random().toString(16).slice(2,6).toUpperCase();
+  tokens.unshift({id, c, t, s});
+  blocks.push({n:blocks.length+1, l:id, d:`${c} ${t}t`, h:'0x'+Math.random().toString(16).slice(2,10)+'...'});
+  renderChain(); renderTokens();
+  const msg = document.getElementById('mint-msg');
+  msg.style.display='block';
+  msg.textContent = `✓ Token ${id} minted — ${t.toLocaleString()}t CO₂ offset tokenized`;
+  setTimeout(()=>msg.style.display='none', 4000);
+}
+
+// ── BOOT ────────────────────────────────────────────────────────────────
+window.addEventListener('load', ()=>{ initDashboard(); initAnomaly(); });
+</script>
+</body>
+</html>
