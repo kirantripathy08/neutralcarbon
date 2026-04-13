@@ -14,7 +14,7 @@ Reference:
   Havlíček et al. (2019) — Supervised learning with quantum-enhanced
   feature spaces. IEEE QCE 2019.
 """
-
+import os
 import numpy as np
 from sklearn.preprocessing import MinMaxScaler, StandardScaler
 from sklearn.decomposition import PCA
